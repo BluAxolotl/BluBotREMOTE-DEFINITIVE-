@@ -1,0 +1,39 @@
+<html>
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width">
+	<title>BluBotREMOTE</title>
+	<link href='https://fonts.googleapis.com/css?family=Press Start 2P' rel='stylesheet'>
+	<link href="style.css" rel="stylesheet" type="text/css" />
+	<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/styles/default.min.css">
+	<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/highlight.min.js">
+	</script>
+	<link href="atom-one-dark.css" rel="stylesheet" type="text/css" />
+</head>
+
+<body>
+	<!-- <div id="util_bar"><button id="search"></button></div> -->
+		<div id="channels" style="overflow-y:scroll;">
+			<!-- <ul id="channels"></ul> -->
+		</div>
+		<div id="messages" style="overflow-y:scroll;">
+    	<!-- <ul id="messages"></ul> -->
+		</div>
+		<div id="servers" style="overflow-y:scroll;">
+			<!-- <ul id="servers"></ul> -->
+		</div>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.3.1/jquery.min.js"></script>
+		<script src="/socket.io/socket.io.js"></script>
+		<script src="https://twemoji.maxcdn.com/v/13.1.0/twemoji.min.js" integrity="sha384-gPMUf7aEYa6qc3MgqTrigJqf4gzeO6v11iPCKv+AP2S4iWRWCoWyiR+Z7rWHM/hU" crossorigin="anonymous"></script>
+		<script src="init.js"></script>
+		<script src="emote.js"></script>
+		<script src="text_parser.js"></script>
+		<script src="main.js"></script>
+		
+		<div id="chatfield">
+    	<input type="search" id="chatfield-input" autocomplete="off" /><button id="image-button">SEND</button>
+		</div>
+	</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "name": "BluBotREMOTE-Definitive",
+  "version": "1.0.0",
+  "description": "",
+  "main": "init.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "arraybuffer-to-string": "^1.0.2",
+    "base64-arraybuffer": "^1.0.1",
+    "config.json": "0.0.4",
+    "console-to-server": "^1.2.2",
+    "date-and-time": "^2.0.1",
+    "discord-inline-reply": "^1.0.3",
+    "discord-markdown": "^2.5.1",
+    "discord-threads": "^1.0.2",
+    "discord.js": "^12.5.3",
+    "discord.js-modern": "npm:discord.js@^13.2.0",
+    "djs-linereply": "^2.3.0",
+    "express": "^4.17.1",
+    "mime-types": "^2.1.33",
+    "moment-timezone": "^0.5.33",
+		"node": "^16.11.1",
+    "socket.io": "^4.2.0",
+    "sync-request": "^6.1.0"
+  }
+}

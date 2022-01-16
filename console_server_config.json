@@ -1,0 +1,22 @@
+{
+  "print_link": true,
+	"server": {
+		"host": "0.0.0.0",
+		"path": "/console"
+	},
+  "html": {
+		"format_ansi": true,
+    "styles": [
+      ":root { background-color: #000000 }",
+			".timestamp { color: #ffffff61; font-weight: normal }",
+      ":root { --background-color: #215621; }",
+      ".console_line { font-family: FreeMono, monospace }",
+			".warn { color: #ffe737 }",
+			".error { color: #e03c28; font-weight: bold; }",
+			".debug { color: #ffffffc7; font-style: italic }"
+    ]
+  },
+  "console": {
+    "default_commands": true
+  }
+}
