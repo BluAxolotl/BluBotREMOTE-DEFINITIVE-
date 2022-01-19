@@ -1,6 +1,4 @@
 // Console //
-const { ConsoleCommand } = require('console-to-server')
-const chalk = require('chalk')
 const print = console.log
 const print_warn = console.warn
 const print_debug = console.debug
@@ -24,10 +22,11 @@ const app = express()
 const server = require('http').createServer(app);
 const io = require('socket.io')(server);
 const datenow = new Date()
-var port = Number(`${datenow.getMilliseconds()}`)
+var port = 8000
 var offset = 0
 var no_connections = true
 // Process Env //
+require('dotenv').config()
 const token = process.env["token"]
 // Misc. Modules //
 var request = require('sync-request')
@@ -176,16 +175,16 @@ async function con_command(socket, line) {
 				text = (`[${member.user.id}] ` + text)
 				switch (member.presence.status) {
 					case 'online':
-						print(chalk.green(text))
+						print(text)
 					break
 					case 'dnd':
-						print(chalk.red(text))
+						print(text)
 					break
 					case 'idle':
-						print(chalk.yellow(text))
+						print(text)
 					break
 					case 'offline':
-						print(chalk.gray(text))
+						print(text)
 					break
 				}
 			})
@@ -579,8 +578,8 @@ client.on('ready', () => {
 	print(`v12 initialized... (${client.user.username})`)
 	function start_server() { // retry server initialization
 		if (no_connections) {
-			server.listen((port+offset), () => {
-				console.log(`listening on *:${(port+offset)}`);
+			server.listen((port), () => {
+				console.log(`listening on *:${(port)}`);
 				setTimeout(function () {
 					if (no_connections) {
 						offset++
