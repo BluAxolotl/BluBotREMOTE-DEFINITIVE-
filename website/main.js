@@ -7,15 +7,20 @@ var channel_elements = []
 var pending_reply = false
 var pending_edit = false
 var shift_down = false
+var ctrl_down = false
 
 var page_loaded = false
 var last_value = ""
 
 var load_msg = null
 var load_more_button = null
+var last_mention = null
+var notify = null
 
 var CachedMessages = {}
 var LoadingAttachments = new Map
+
+var ping = new Audio('discord-notification.mp3')
 
 //// TESTING ////
 
@@ -80,8 +85,10 @@ class MessageElement {
 		var p = document.createElement('p')
 		p.setAttribute('msg_obj', encodeURI(JSON.stringify(msg)))
 		p.setAttribute('deleted', "false")
+		if (msg.mentions.me) { p.classList.add("mentions") }
+		let author_button = document.createElement('button')
 		let author = (msg.member.nickname ? `${msg.member.nickname} <span style="color: #7c7c7c;">(${msg.author.username})</span>` : msg.author.username)
-		let alt_author
+		let alt_author // repliee member, don't delete again idiot )-_-)
 		if (options.reply != false) { alt_author = (options.reply.member.nickname ? `${options.reply.member.nickname} <span style="color: #7c7c7c;">(${options.reply.author.username})</span>` : options.reply.author.username) }
 		let edit_status = (msg.edited ? `<span style="color: #7c7c7c; font-style: italic;">(edited)</span>` : "")
 		let reply_status = (options.reply != false ? `<span class="reply-line"><span style="color:${options.reply.color}">${alt_author}</span>: ${options.reply.content} ⤵</span><br>` : "")
@@ -111,6 +118,7 @@ class MessageElement {
 			})
 		}
 		// EMBEDS
+		var youtube_elements = []
 		msg.raw_content.split(' ').forEach(i => {
 			// YOUTUBE
 			if (i.startsWith("https://www.youtube.com/watch?v=") || i.startsWith("https://youtu.be/")) {
@@ -120,17 +128,18 @@ class MessageElement {
 				video_id = video_id.split("&")[0]
 				video_id = video_id.replace("?t=", "?start=")
 				youtube_element.src = `https://www.youtube.com/embed/${video_id}`
-				print(youtube_element.src)
+				youtube_element.style = "margin-bottom: 15px"
 				youtube_element.classList.add('ath')
 				p.append(document.createElement('br'))
-				p.appendChild(youtube_element)
+				youtube_elements.push(youtube_element)
+				// p.appendChild(youtube_element)
 			}
 			if (msg.gifs) {
 				msg.gifs.forEach(i => {
 					var gif_element = document.createElement('video')
 					gif_element.src = i
 					gif_element.controls = false
-					gif_element.loop = true
+			gif_element.loop = true
 					print(i)
 					gif_element.classList.add('ath')
 					gif_element.setAttribute('blur', 'true')
@@ -154,16 +163,68 @@ class MessageElement {
 				})
 			}
 		})
-		// msg.embeds.forEach(i => {
-		// 	print(JSON.stringify(i))
-		// 	if (i.type == "gifv") {
-		// 		i.forEach(o => {
-		// 			var gif_element = document.createElement('img')
-		// 			gif_element.src = o.url
-		// 			p.appendChild(gif_element)
-		// 		})
-		// 	}
-		// })
+		// MESSAGE EMBED
+		msg.embeds.forEach((embed, index) => {
+
+			var element = document.createElement('div')
+			var main_content = document.createElement('div')
+			element.className = "embed-container"
+			main_content.className = "embed"
+
+			if (embed.provider) { print(`\n\n${msg.id} ==> ${embed.provider.name}\n\n`) }
+
+			if (embed.author) {
+				var child = null
+				if (embed.author.url) {
+					child = document.createElement("a")
+					child.href = embed.author.url
+				} else {
+					child = document.createElement("p")
+				}
+				child.textContent = embed.author.name
+				child.className = `embed-author`
+				main_content.appendChild(child)
+			}
+
+			var parts = ["title", "desc"]
+
+			parts.forEach(part => {
+				if (embed[part]) {
+					var child = document.createElement("p")
+					child.innerHTML = embed[part]
+					child.className = `embed-${part}`
+					main_content.appendChild(child)
+				}
+			})
+
+		if (embed.footer) {
+			var child = document.createElement("p")
+			child.textContent = embed.footer.text
+			child.className = `embed-footer`
+			main_content.appendChild(child)
+			if (embed.footer.icon) {
+				var icon = document.createElement('img')
+				icon.src = embed.footer.icon
+				icon.className = `footer-icon`
+				child.appendChild(icon)
+			}
+		}
+
+			if (youtube_elements.length > 0) {
+				main_content.appendChild(youtube_elements[index])
+			}
+
+			element.appendChild(main_content)
+			p.appendChild(element)
+
+			if (embed.hexColor) {
+				var style_string = `background-image: linear-gradient(to right, ${embed.hexColor} 10px, #0000003c 11px);`
+				main_content.setAttribute("style", style_string)
+			} else {
+				var style_string = `background-image: linear-gradient(to right, #2f2f2f 10px, #0000003c 11px);`
+				main_content.setAttribute("style", style_string)
+			}
+		})
 		// CREATING BUTTON ELEMENTS
 		var info_button = document.createElement('button')
 		var reply_button = document.createElement('button')
@@ -173,11 +234,12 @@ class MessageElement {
 		// INFO BUTTON
 		info_button.textContent = "🔍"
 		info_button.onclick = function (e) {
-			if (shift_down) {
-				socket.emit('MSG_INFO', current_channel, msg.id)
-			} else {
-				print(`== MSG INFO ==\n${JSON.stringify(msg)}\n`)
-			}
+			print(`== MSG INFO ==\n${JSON.stringify(msg)}\n`)
+			// if (shift_down) {
+			// 	socket.emit('MSG_INFO', current_channel, msg.id)
+			// } else {
+			// 	print(`== MSG INFO ==\n${JSON.stringify(msg)}\n`)
+			// }
 		}
 		// REPLY BUTTON
 		reply_button.textContent = "️️↩️"
@@ -355,7 +417,33 @@ socket.on('REPLY_LOAD', (own_msg, msg) => {
 	messages_element.scrollTop = current
 })
 
+function jump_msg(_unused) {
+	if (last_mention != null) {
+		socket.emit('REQUEST_CHANNEL', last_mention)
+	}
+}
+
+socket.on('JUMP_MESSAGE', jump_msg)
+
 socket.on('NEW_MESSAGE', (msg) => {
+	var exec_ping = function() {
+		ping.currentTime = 0
+		ping.play()
+		print(`\n\n==> MENTIONED IN [${msg.guild.name}:${msg.channel.name}] (type "/jump" to see message) <==\n\n`)
+		last_mention = msg.channel.id
+	}
+	if (msg.mentions.me) {
+		if (msg.channel.id == current_channel && document.visibilityState == "hidden") {
+			exec_ping()
+		} else if (msg.channel.id != current_channel) {
+			exec_ping()
+		}
+		if (document.visibilityState == "hidden") {
+			print('lawl')
+			notify = new Notification(`Mentioned in [${msg.guild.name}:${msg.channel.name}] !`)
+			notify.onclick = jump_msg
+		}
+	}
 	if (msg.channel.id == current_channel) { new MessageElement(msg, true, true) }
 })
 
@@ -427,11 +515,15 @@ socket.on('CHANNEL_INIT', (guilds, channel, msgs) => {
 })
 
 socket.emit('REQUEST_CHANNEL', current_channel)
+Notification.requestPermission()
 
 //// Document Events ////
 
 window.addEventListener('keyup', (e) => { // SENDING A MESSAGE
 	switch (event.which) {
+		case 17:
+			ctrl_down = false
+		break;
 		case 16:
 			shift_down = false
 		break;
@@ -484,7 +576,7 @@ function sending_func(...args) {
 			if (input.value) { socket.emit("SEND_MESSAGE", current_channel, parse_input(input.value)) }
 		} else if (pending_edit == false) { // REPLY MESSAGE
 			if (input.value) {
-				socket.emit("REPLY", current_channel, pending_reply, parse_input(input.value))
+				socket.emit("REPLY", current_channel, pending_reply, parse_input(input.value), ctrl_down)
 				pending_reply = false
 			}
 		} else if (pending_reply == false) { // EDITING OR DELETE
@@ -530,6 +622,9 @@ setTimeout(function(){
 last_value = input.value
 var image_element = document.getElementById('image-button')
 switch (event.which) {
+	case 17:
+		ctrl_down = true
+	break;
 	case 16:
 		shift_down = true
 	break;
@@ -569,6 +664,13 @@ switch (event.which) {
 		}
 	break;
 }
+})
+
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') {
+    // The tab has become visible so clear the now-stale Notification.
+    if (notify != null) { notify.close() }
+  }
 })
 
 document.getElementById('image-button').onclick = sending_func

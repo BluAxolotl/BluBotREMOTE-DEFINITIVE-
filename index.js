@@ -6,11 +6,13 @@ const print_warn = console.warn
 const print_debug = console.debug
 const print_error = console.error
 // Discord //
+const BLUBOT_ID = "705347670054666260"
+const BLUAXOLOTL_ID = "229319768874680320"
 var CachedMessages = []
 const Discord = require('discord.js')
 const NewDiscord = require('discord.js-modern')
 const Intents = NewDiscord.Intents
-const new_client = new NewDiscord.Client({intents: [Intents.FLAGS.GUILD_MESSAGES, Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MEMBERS]})
+const new_client = new NewDiscord.Client({intents: Object.keys(Intents.FLAGS)})
 const client = new_client
 const config = require('./config.json')
 const { parser, htmlOutput, toHTML } = require('discord-markdown')
@@ -22,14 +24,16 @@ const app = express()
 const server = require('http').createServer(app);
 const io = require('socket.io')(server);
 const datenow = new Date()
-const port = Number(`${datenow.getMilliseconds()}`)
+var port = Number(`${datenow.getMilliseconds()}`)
+var offset = 0
+var no_connections = true
 // Process Env //
 const token = process.env["token"]
 // Misc. Modules //
 var request = require('sync-request')
 const date = require('date-and-time')
 const TextParser = require("./text_parser.js").parser
-const emotes = require("./emote.json")
+const emotes = require("./website/emote.js")
 const path = require('path')
 var ab2str = require('arraybuffer-to-string')
 var based = require('base64-arraybuffer')
@@ -39,6 +43,7 @@ const BlockedUsers = [
 	// '143866772360134656', // Maize
 	'382728147675643925', // Smerg
 	'468281173072805889', // Marriage Bot
+	'812224023777771561', // Some random spamming the n-word
 	// '597927458792276009' // Jimothee
 ]
 const BlockedChannels = [
@@ -56,6 +61,7 @@ var Nicknames = new Map([
 	['320847631637151744', 'Axo'],
 	['462282347937529876', 'Asta'],
 	['203221713440210944', 'Gubbys'],
+	['275730829391691777', 'GreenGuy'],
 ])
 var Usernames = new Map()
 var ImageUpload = {}
@@ -101,8 +107,12 @@ async function con_command(socket, line) {
 	var command_name = args.shift()
 	switch (command_name) {
 		case 'goto':
-			var msg = CachedMessages[args[0]]
-			request_channel(socket, msg.channel.id)
+			if (Number(args[0]) < CachedMessages.length) {
+				var msg = CachedMessages[args[0]]
+				request_channel(socket, msg.channel.id)
+			} else {
+				print("\n>>> invalid id :stare:\n")
+			}
 		break;
 		case 'back':
 			if (BackChannels.has(socket)) {
@@ -112,9 +122,27 @@ async function con_command(socket, line) {
 				print("\n\n[ NO BACK CHANNEL ]\n\n")
 			}
 		break;
+		case "jump":
+			socket.emit('JUMP_MESSAGE')
+		break;
 		case 'reload':
 			var channel = Sockets.get(socket)
 			request_channel(socket, channel)
+		break;
+		case 'send_embed':
+			var channel_id = Sockets.get(socket)
+			var json_string = args.join(" ")
+			if (json_string == "") { // /send_embed {"title":"This is a test","description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.","footer": {"text": "Feet... FEET"},"color":"BLUE"}
+				json_string = `{
+					"title":"This is a test",
+					"description": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+					"footer": {"text": "Feet... FEET"},
+					"color": "BLUE"
+				}`
+			}
+			new_client.channels.fetch(channel_id).then(channel => {
+				channel.send({embeds:[JSON.parse(json_string)]})
+			})
 		break;
 		case 'uh':
 			socket.emit("PRINT_UH")
@@ -122,13 +150,17 @@ async function con_command(socket, line) {
 		case 'ping':
 			var channel = Sockets.get(socket)
 			channel = await client.channels.fetch(channel)
-			let q_id = String(line.replace("ping ", ""))
+			let q_id = String(args.shift())
 			if (Usernames.has(q_id)) {
 				let n_id = Usernames.get(q_id)
-				channel.send(`<@${n_id}>`)
+				channel.send(`<@${n_id}> ${args.join(" ")}`)
 			} else {
 				let mentionee = channel.guild.members.cache.find(member => member.user.tag === String(line.replace("ping ", "")))
-				channel.send(`<@${mentionee.id}>`)
+				if (mentionee) {
+					channel.send(`<@${mentionee.id}>`)
+				} else {
+					print("\n== INVALID ARGUMENT ==\n")
+				}
 			}
 		break;
 		case 'list':
@@ -158,6 +190,22 @@ async function con_command(socket, line) {
 				}
 			})
 		break;
+		case 'lookup':
+			var mode = args.shift()
+			switch(mode) {
+				case 'user':
+					try {
+						var user = await new_client.users.fetch(args[0])
+						print(`\n\nRESULT >>> ${user.username}`)
+					} catch ( err ) {
+						print(err)
+					}
+				break;
+				default:
+					print("\n\n>>> Idiot, forgot the rest :woozy:\n\n")
+				break;
+			}
+		break;
 		default:
 			print(`${command_name} ==> Unknown Command`)
 	}
@@ -176,12 +224,27 @@ function send_convert(content) {
 //// Socket.io ////
 io.on('connection', (socket) => {
 
+	no_connections = false
+	print("! CONNECTION")
+
 	socket.on('SEND_MESSAGE', async (channel_id, content) => {
-		function simply_send(send_embed, send) {
+		async function simply_send(send_embed, send) {
 			if (send_embed) {
 				channel.send({embeds: [{description: send}]})
 			} else {
-				channel.send(send)
+				var words = content.split(' ')
+				words.forEach((word, index) => {
+					if (word.startsWith('\\@')) {
+						var new_word = word.replace("\\@", "@")
+						words[index] = new_word
+					} else if (word.startsWith('@')) {
+						var username = word.substring(1)
+						var id = Usernames.get(username)
+						var new_word = `<@${id}>`
+						words[index] = new_word
+					}
+				})
+				channel.send(words.join(" "))
 			}
 		}
 		var send_embed = false
@@ -223,7 +286,7 @@ io.on('connection', (socket) => {
 		}
 	})
 
-	socket.on('REPLY', async (channel_id, message_id, content) => {
+	socket.on('REPLY', async (channel_id, message_id, content, ping) => {
 		let channel = await new_client.channels.fetch(channel_id)
 		let message = await channel.messages.fetch(message_id)
 		message.reply(send_convert(content))
@@ -259,10 +322,14 @@ io.on('connection', (socket) => {
 
 	socket.on('REQUEST_MESSAGES', async msg => {
 		print("\n==> LOADING MESSAGES... ==>\n")
-		var channel = await client.channels.fetch(msg.channel.id)
-		let messages = await channel.messages.fetch({ limit: 25, before: msg.id })
-		let message_array = messages.map(message => new SocketMessage(message, socket))
-		socket.emit('PUSH_MESSAGES', message_array)
+		if (msg != null) {
+			var channel = await client.channels.fetch(msg.channel.id)
+			let messages = await channel.messages.fetch({ limit: 25, before: msg.id })
+			let message_array = messages.map(message => new SocketMessage(message, socket))
+			socket.emit('PUSH_MESSAGES', message_array)
+		} else {
+			socket.emit('PUSH_MESSAGES', [])
+		}
 	})
 
 	socket.on('REQUEST_CHANNEL', channel_id => {
@@ -426,20 +493,22 @@ class SocketMessage {
 				}
 			}
 		}
+		
+		var accepted_types = ["link", "rich", "video"]
 
-		// this.embeds = msg.embeds.map(emb => {
-		// 	return {
-		// 		url: emb.url,
-		// 		type: emb.type,
-		// 		files: emb.files.map(file => {
-		// 			if (typeof(file) === 'string') {
-		// 				return {type: 'string', url: file}
-		// 			} else {
-		// 				return make_ath(file)
-		// 			}
-		// 		})
-		// 	}
-		// })
+		var real_embeds = msg.embeds.filter(emb => accepted_types.includes(emb.type))
+
+		this.embeds = real_embeds.map(emb => {
+			return {
+				url: emb.url,
+				hexColor: emb.hexColor,
+				author: (emb.author != null ? {name: emb.author.name, url: emb.author.url} : null),
+				title: emb.title,
+				desc: emb.description,
+				footer: (emb.footer != null ? {text: emb.footer.text, icon: emb.footer.iconURL} : null),
+				provider: (emb.provider != null ? {name: emb.provider.name, url: emb.provider.url} : null)
+			}
+		})
 
 		this.attachments = msg.attachments.map(make_ath)
 		
@@ -466,6 +535,17 @@ class SocketMessage {
 		} else {
 			this.reply = false
 		}
+
+		this.mentions = {
+			me: false
+		}
+		var ids = msg.mentions.members.map(member => member.id)
+		var usernames = msg.mentions.members.map(member => member.user.username)
+		var colors = msg.mentions.members.map(member => (member.displayHexColor || 'ffffff'))
+		this.mentions.me = ((ids.includes(BLUBOT_ID)) || (ids.includes(BLUAXOLOTL_ID)))
+		ids.forEach((id, index) => {
+			this.content = this.content.replace(("@"+id), `<span style="border-radius: 5px; background: ${colors[index]}6c; color: ${colors[index]};">@${usernames[index]}</span>`)
+		})
 
 		this.guild = {
 			name: msg.guild.name,
@@ -497,9 +577,20 @@ new_client.on('messageCreate', msg => {
 
 client.on('ready', () => {
 	print(`v12 initialized... (${client.user.username})`)
-	server.listen(port, () => {
-		console.log(`listening on *:${port}`);
-	})
+	function start_server() { // retry server initialization
+		if (no_connections) {
+			server.listen((port+offset), () => {
+				console.log(`listening on *:${(port+offset)}`);
+				setTimeout(function () {
+					if (no_connections) {
+						offset++
+						server.close(start_server)
+					}
+				}, 1000)
+			})	
+		}
+	}
+	start_server()
 })
 new_client.on('ready', () => {
 	print(`v13 initialized...`)
