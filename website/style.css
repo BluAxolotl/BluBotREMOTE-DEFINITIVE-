@@ -27,6 +27,44 @@ body {
 	overflow: hidden;
 }
 
+.popup {
+	z-index: 200;
+	padding: 5px;
+	border-radius: 10px;
+	position: absolute;
+	/* float: center; */
+  top: calc(12.5% - 5px);
+  left: calc(12.5% - 5px);
+	width: 75%;
+	height: 75%;
+	background-color: #323c48;
+}
+
+.popup-user-name {
+	font-size: 20px;
+	font-weight: bold;
+	margin-top: 2px;
+	text-align: center;
+}
+
+#popup-backdrop{
+	z-index: 199;
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	width: 100%;
+	height: 100%;
+	background-color: #000000Bc;
+}
+
+#close-popup {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	width: 50px;
+	z-index: 200;
+}
+
 /* width */
 ::-webkit-scrollbar {
   width: 5px;
@@ -123,14 +161,14 @@ code {
 	z-index: 10;
 	list-style: none;
 	width: var(--m_width);
-	height: calc(var(--main_height) - var(--chatinput-height));
+	height: calc(var(--main_height) - calc(var(--chatinput-height) + 5px));
 	max-width: var(--m_width);
 	/* padding-left: 10px; */
 	overflow-y: scroll;
 	float: right;
 	position: fixed;
-	margin-top: 0;
-	margin-bottom: 10px;
+	margin-top: -1px;
+	margin-bottom: 0px;
 	margin-left: var(--margin_cs);
 }
 
@@ -218,6 +256,10 @@ code {
 	position: fixed;
 	z-index: 100;
 	background-color: #070a0d
+}
+
+#util_channel {
+	margin-top: 0px
 }
 
 .d-emoji {

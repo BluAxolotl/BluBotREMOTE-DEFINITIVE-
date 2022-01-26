@@ -2,6 +2,7 @@ var messages_element = document.getElementById('messages')
 var channels_element = document.getElementById('channels')
 var guilds_element = document.getElementById('servers')
 var image_element = document.getElementById('image-button')
+var util_channel = document.getElementById('util_channel')
 var channel_elements = []
 
 var pending_reply = false
@@ -17,15 +18,28 @@ var load_more_button = null
 var last_mention = null
 var notify = null
 
+var channel_top = false
+
+var pending_requests = {}
 var CachedMessages = {}
 var LoadingAttachments = new Map
 
+var popup_user = null
+
 var ping = new Audio('discord-notification.mp3')
+
+var elem = document.getElementById.bind(document)
+
+var close_popup = document.getElementById(`close-popup`)
+close_popup.onclick = function (e) {
+	hide_popup()
+	socket.emit("SET_NICKNAMES", popup_user.id, elem('popup-user-nick').value)
+	elem('popup-user-nick').value = ""
+}
 
 //// TESTING ////
 
 socket.on('test', data => {
-
 	var p = document.createElement('p')
 	p.textContent = String(data)
 	messages_element.appendChild(p)
@@ -82,7 +96,7 @@ class MessageElement {
 		var this_client = (msg.author.id == BLUBOT_ID)
 
 		// MAIN ELEMENT
-		var p = document.createElement('p')
+		var p = document.createElement('div')
 		p.setAttribute('msg_obj', encodeURI(JSON.stringify(msg)))
 		p.setAttribute('deleted', "false")
 		if (msg.mentions.me) { p.classList.add("mentions") }
@@ -100,21 +114,61 @@ class MessageElement {
 			i = i+1
 		})
 
-		p.innerHTML = `${reply_status}<span style="color: #7c7c7c;">[${msg.timestamp.real}] </span><span style="color: ${msg.color};">${author}</span>:<br>${msg.content} ${edit_status}`
-		p.classList.add('messagetext')
+		var content = document.createElement('span')
+		var top_container = document.createElement('p')
+		var author_element = document.createElement('span')
+		var timestamp_element = document.createElement('span')
+		var reply_element = document.createElement('span')
+		
+		content.innerHTML = `${msg.content} ${edit_status}`
+		author_element.innerHTML = `<span style="color: ${msg.color};">${author}</span>:<br>`
+		timestamp_element.innerHTML = `<span style="color: #7c7c7c;">[${msg.timestamp.real}] </span>`
+		reply_element.innerHTML = `${reply_status}`
+
+		async function author_click(e) {
+			try {
+				popup_user = msg.author
+				var popup_user_name = document.getElementById('popup-user-name')
+				var popup_user_nick = document.getElementById('popup-user-nick')
+				var nickname = await simpleDataRequest(`${msg.id}-nickname`, "nickname", {id: msg.author.id})
+				var blocked = await simpleDataRequest(`${msg.id}-blocked`, "blocked", {id: msg.author.id})
+
+				popup_user_name.textContent = msg.author.username
+				popup_user_nick.value = (nickname != null ? nickname : "")
+
+				if (blocked) { elem('popup-user-block').style = "display: none;"; elem('popup-user-unblock').style = "" } else {
+					elem('popup-user-block').style = ""; elem('popup-user-unblock').style = "display: none;"
+				}
+
+				show_popup('user')
+			} catch(err) {
+				print(err)
+			}
+		}
+
+		author_element.onclick = author_click
+
+		p.appendChild(reply_element)
+		p.appendChild(timestamp_element)
+		p.appendChild(author_element)
+		p.appendChild(content)
+
+		content.classList.add('messagetext')
 		p.id = msg.id
 
 		// ATTACHMENT BUTTON
 		if (msg.attachments.length > 0) {
 			msg.attachments.forEach(ath => {
-				var open_attachment_button = document.createElement('button')
-				open_attachment_button.id = ath.id
-				open_attachment_button.textContent = ath.name
-				open_attachment_button.onclick = function (e) {
-					socket.emit("REQUEST_ATTATCHMENT", ath)
+				if (ath) {
+					var open_attachment_button = document.createElement('button')
+					open_attachment_button.id = ath.id
+					open_attachment_button.textContent = ath.name
+					open_attachment_button.onclick = function (e) {
+						socket.emit("REQUEST_ATTATCHMENT", ath)
+					}
+					p.append(document.createElement('br'))
+					p.appendChild(open_attachment_button)
 				}
-				p.append(document.createElement('br'))
-				p.appendChild(open_attachment_button)
 			})
 		}
 		// EMBEDS
@@ -171,7 +225,7 @@ class MessageElement {
 			element.className = "embed-container"
 			main_content.className = "embed"
 
-			if (embed.provider) { print(`\n\n${msg.id} ==> ${embed.provider.name}\n\n`) }
+			// if (embed.provider) { print(`\n\n${msg.id} ==> ${embed.provider.name}\n\n`) }
 
 			if (embed.author) {
 				var child = null
@@ -284,6 +338,10 @@ class MessageElement {
 			p.style = ""
 			buttons.forEach(curr_button => { curr_button.setAttribute('style', 'opacity: 0; display: none;') })
 		})
+		// GET SCROLL POSITION
+		var a = messages_element.scrollTop;
+		var b = messages_element.scrollHeight - messages_element.clientHeight;
+		var c = (a / b)*100;
 		// APPEND BUTTONS
 		p.appendChild(info_button)
 		p.appendChild(reply_button)
@@ -293,9 +351,6 @@ class MessageElement {
 		// APPEND MESSAGE ELEMENT + SCROLLING
 		if (!msg.blocked && append) { messages_element.appendChild(p); twemoji.parse(messages_element) } else { this.p = p }
 		if (live) {
-			var a = messages_element.scrollTop;
-			var b = messages_element.scrollHeight - messages_element.clientHeight;
-			var c = (a / b)*100;
 			if (this_client || (c) > 98) {
 				messages_element.scrollTo(0, messages_element.scrollHeight)
 			}
@@ -306,10 +361,57 @@ class MessageElement {
 
 //// Functions ////
 
+function hide_popup() {
+	var popups = [].slice.call(document.getElementsByClassName('popup'))
+	var popup_backdrop = document.getElementById(`popup-backdrop`)
+	popup_backdrop.style = "display: none;"
+	close_popup.style = "display: none;"
+	popups.forEach(popup => {
+		popup.style = "display: none;"
+	})
+}
+
+function show_popup(popup) {
+	hide_popup()
+	var popup_element = document.getElementById(`popup-${popup}`)
+	var popup_backdrop = document.getElementById(`popup-backdrop`)
+	popup_element.style = ""
+	popup_backdrop.style = ""
+	close_popup.style = ""
+}
+
+elem('popup-user-block').onclick = function (e) {
+	socket.emit("USER_BLOCK", "append", popup_user.id)
+	elem('popup-user-unblock').style = ""
+	elem('popup-user-block').style = "display: none;"
+	socket.emit("RELOAD_CHANNEL")
+}
+
+elem('popup-user-unblock').onclick = function (e) {
+	socket.emit("USER_BLOCK", "pop", popup_user.id)
+	elem('popup-user-unblock').style = "display: none;"
+	elem('popup-user-block').style = ""
+	socket.emit("RELOAD_CHANNEL")
+}
+
+function simpleDataRequest(id, query, args) {
+	try {
+	socket.emit("DATA_REQUEST", id, query, args)
+	return new Promise((res, rej) => {
+		socket.on('DATA_REQUEST', (cb_id, cb_data) => {
+			if (cb_id == id) {
+				res(cb_data)
+			}
+		})
+	})
+	} catch (err) {
+		console.error(err)
+	}
+}
+
 function setCaretPosition(ctrl, pos) {
   // Modern browsers
   if (ctrl.setSelectionRange) {
-		print("NEW")
     ctrl.focus();
     ctrl.setSelectionRange(pos, pos);
   
@@ -456,21 +558,28 @@ socket.on('EDIT_MESSAGE', (oldMsg, msg) => {
 })
 
 socket.on('PUSH_MESSAGES', (msgs) => {
-	var a = messages_element.scrollHeight - messages_element.clientHeight;
-	var top = a
-	msgs.forEach(msg => {
-		var p = new MessageElement(msg, false, false).p
-		messages_element.insertBefore(p, messages_element.firstChild)
-	})
-	load_button(msgs[msgs.length-1], true)
-	print("\n== MESSAGES LOADED ==\n")
-	var b = messages_element.scrollHeight - messages_element.clientHeight;
-	messages_element.scrollTo(0, b-a)
+	if (msgs.length != 0) {
+		var a = messages_element.scrollHeight - messages_element.clientHeight;
+		var top = a
+		msgs.forEach(msg => {
+			var p = new MessageElement(msg, false, false).p
+			messages_element.insertBefore(p, messages_element.firstChild)
+		})
+		load_button(msgs[msgs.length-1], true)
+		print("\n== MESSAGES LOADED ==\n")
+		var b = messages_element.scrollHeight - messages_element.clientHeight;
+		messages_element.scrollTo(0, b-a)
+	} else {
+		channel_top = true
+		print("\n== BEGINNING OF CHANNEL ==\n")
+	}
 })
 
 socket.on('CHANNEL_INIT', (guilds, channel, msgs) => {
+	util_channel.textContent = `[ ${channel.guild.name.split(" ")[0]}:${channel.name} ]`
 	try {
 		current_channel = channel.id
+		channel_top = false
 		
 		window.sessionStorage.setItem(channel.guild.id, channel.id)
 
@@ -562,8 +671,10 @@ messages_element.addEventListener('scroll', function(e) {
 	var b = messages_element.scrollHeight - messages_element.clientHeight;
 	var c = (a / b)*100;
 	if (c == 0) {
-		socket.emit("REQUEST_MESSAGES", load_msg)
-		load_more_button.remove()
+		if (!channel_top) {
+			socket.emit("REQUEST_MESSAGES", load_msg)
+			load_more_button.remove()
+		}
 	}
 })
 

@@ -12,8 +12,9 @@ const NewDiscord = require('discord.js-modern')
 const Intents = NewDiscord.Intents
 const new_client = new NewDiscord.Client({intents: Object.keys(Intents.FLAGS)})
 const client = new_client
-const config = require('./config.json')
+// const config = require('./config.json')
 const { parser, htmlOutput, toHTML } = require('discord-markdown')
+var prev_req_channel = null
 // Server //
 var Sockets = new Map()
 var BackChannels = new Map()
@@ -25,6 +26,15 @@ const datenow = new Date()
 var port = 8000
 var offset = 0
 var no_connections = true
+// JSON DATABASE //
+// var JSONFileSync = null
+// var LowSync = null
+// var adapter = null
+var db = null
+var BlockedUsers = null
+var BlockedChannels = null
+var Nicknames = null
+var Usernames = new Map()
 // Process Env //
 require('dotenv').config()
 const token = process.env["token"]
@@ -38,38 +48,17 @@ var ab2str = require('arraybuffer-to-string')
 var based = require('base64-arraybuffer')
 var mime = require('mime-types')
 var moment = require('moment-timezone')
-const BlockedUsers = [
-	// '143866772360134656', // Maize
-	'382728147675643925', // Smerg
-	'468281173072805889', // Marriage Bot
-	'812224023777771561', // Some random spamming the n-word
-	// '597927458792276009' // Jimothee
-]
-const BlockedChannels = [
-	"883454765319729173"
-]
-var Nicknames = new Map([
-	['383851442341019658', 'Karma'],
-	['141323186259230721', 'Lognes'],
-	['497844474043432961', 'Salty'],
-	['148471246680621057', 'Devious'],
-	['150398769651777538', 'Ans'],
-	['628405211291189250', 'Nobo'],
-	['143866772360134656', 'Maize'],
-	['260235802573799424', 'Luok'],
-	['320847631637151744', 'Axo'],
-	['462282347937529876', 'Asta'],
-	['203221713440210944', 'Gubbys'],
-	['275730829391691777', 'GreenGuy'],
-])
-var Usernames = new Map()
 var ImageUpload = {}
 
-Nicknames.forEach((i, o) => {
-	Usernames.set(i, o)
-})
-
 //// Functions ////
+Array.prototype.remove = function (value) {
+  let index = this.indexOf(value);
+  if (index > -1) {
+    this.splice(index, 1)
+  }
+  return value;
+}
+
 function removeItemOnce(arr, value) {
   var index = arr.indexOf(value);
   if (index > -1) {
@@ -79,6 +68,8 @@ function removeItemOnce(arr, value) {
 }
 
 async function request_channel(socket, channel_id) {
+	db_read()
+	prev_req_channel = channel_id
 	if (Sockets.has(socket)) {
 		var channel = Sockets.get(socket)
 		BackChannels.set(socket, channel)
@@ -97,6 +88,18 @@ async function request_channel(socket, channel_id) {
 		return a.timestamp.sort - b.timestamp.sort
 	})
 	socket.emit('CHANNEL_INIT', guilds_array, channel_object, message_array)
+}
+
+function reload_channel(socket) {
+	var channel = Sockets.get(socket)
+	if (channel != null) {
+		request_channel(socket, channel)
+	} else if (prev_req_channel != null) {
+		request_channel(socket, prev_req_channel)
+		print("\n\n==> Defaulted to last requested channel (probably due to frontend script reset 🥴)\n\n")
+	} else {
+		print("\n\n==> NO CHANNEL AT ALL\n\n")
+	}
 }
 
 async function con_command(socket, line) {
@@ -125,8 +128,7 @@ async function con_command(socket, line) {
 			socket.emit('JUMP_MESSAGE')
 		break;
 		case 'reload':
-			var channel = Sockets.get(socket)
-			request_channel(socket, channel)
+			reload_channel(socket)
 		break;
 		case 'send_embed':
 			var channel_id = Sockets.get(socket)
@@ -142,6 +144,9 @@ async function con_command(socket, line) {
 			new_client.channels.fetch(channel_id).then(channel => {
 				channel.send({embeds:[JSON.parse(json_string)]})
 			})
+		break;
+		case 'blocked':
+			print(db.data.BlockedUsers)
 		break;
 		case 'uh':
 			socket.emit("PRINT_UH")
@@ -220,18 +225,29 @@ function send_convert(content) {
 	return (content.replace(searchRegExp, "\n"))
 }
 
+function db_read() {
+	db.read()
+	BlockedUsers = db.data.BlockedUsers
+	BlockedChannels = db.data.BlockedChannels
+	Nicknames = new Map(db.data.Nicknames)
+
+	Nicknames.forEach((i, o) => {
+		Usernames.set(i, o)
+	})
+}
+
 //// Socket.io ////
 io.on('connection', (socket) => {
 
 	no_connections = false
-	print("! CONNECTION")
+	print("! CONNECTION")	
 
 	socket.on('SEND_MESSAGE', async (channel_id, content) => {
 		async function simply_send(send_embed, send) {
 			if (send_embed) {
 				channel.send({embeds: [{description: send}]})
 			} else {
-				var words = content.split(' ')
+				var words = send.split(' ')
 				words.forEach((word, index) => {
 					if (word.startsWith('\\@')) {
 						var new_word = word.replace("\\@", "@")
@@ -305,6 +321,43 @@ io.on('connection', (socket) => {
 		})
 	})
 
+	socket.on("RELOAD_CHANNEL", () => {
+		reload_channel(socket)
+	})
+
+	socket.on('DATA_REQUEST', (id, query, args) => {
+		function return_data (data) {
+			socket.emit("DATA_REQUEST", id, data)
+		 }
+		switch (query) {
+			case 'nickname':
+				let id = args.id
+				if (Nicknames.has(id)) {
+					return_data(Nicknames.get(id))
+				} else {
+					return_data(null)
+				}
+			break;
+			case 'blocked':
+				return_data(BlockedUsers.includes(args.id))
+			break;
+		}
+	})
+
+	socket.on("USER_BLOCK", (method, id) => {
+		switch (method) {
+			case 'pop':
+				db.data.BlockedUsers.remove(id)
+			break;
+			case 'append':
+				db.data.BlockedUsers.push(id)
+			break;
+		}
+		// print(db.data.BlockedUsers)
+		db.write()
+		db_read()
+	}) 
+
 	socket.on('disconnect', function (socket) { Sockets.delete(socket) })
 
 	new_client.on('messageCreate', function (msg) {
@@ -325,6 +378,7 @@ io.on('connection', (socket) => {
 			var channel = await client.channels.fetch(msg.channel.id)
 			let messages = await channel.messages.fetch({ limit: 25, before: msg.id })
 			let message_array = messages.map(message => new SocketMessage(message, socket))
+			message_array = message_array.filter(msg => msg.blocked != true)
 			socket.emit('PUSH_MESSAGES', message_array)
 		} else {
 			socket.emit('PUSH_MESSAGES', [])
@@ -466,7 +520,10 @@ class SocketMessage {
 		this.edited = (!(msg.editedTimestamp == 0 || msg.editedTimestamp == null))
 
 		this.id = msg.id
-		this.timestamp = {real: moment.tz(msg.createdAt, 'America/New_York').format('M/D h:mm:ss A'), sort: msg.createdAt.valueOf()}
+
+		// var today = (moment.tz(Date.now(), 'America/New_York').format('M/D/YYYY')).split("/")
+		// today = {month}
+		this.timestamp = {real: moment.tz(msg.createdAt, 'America/New_York').calendar(), sort: msg.createdAt.valueOf()}
 
 		var msg_id = this.id
 
@@ -481,14 +538,18 @@ class SocketMessage {
 
 		function make_ath(ath) {
 			var	mime_type = mime.lookup(ath.url)
-			return {
-				id: ath.id, 
-				name: ath.name, 
-				url: ath.url, 
-				type: mime_type.split("/")[0], 
-				protocol: mime_type,
-				msg: { 
-					id: msg_id
+			if (mime_type == false) {
+				return null
+			} else {
+				return {
+					id: ath.id, 
+					name: ath.name, 
+					url: ath.url, 
+					type: mime_type.split("/")[0], 
+					protocol: mime_type,
+					msg: { 
+						id: msg_id
+					}
 				}
 			}
 		}
@@ -538,12 +599,18 @@ class SocketMessage {
 		this.mentions = {
 			me: false
 		}
-		var ids = msg.mentions.members.map(member => member.id)
+		var member_ids = msg.mentions.members.map(member => member.id)
+		var role_ids = msg.mentions.roles.map(role => role.id)
 		var usernames = msg.mentions.members.map(member => member.user.username)
-		var colors = msg.mentions.members.map(member => (member.displayHexColor || 'ffffff'))
-		this.mentions.me = ((ids.includes(BLUBOT_ID)) || (ids.includes(BLUAXOLOTL_ID)))
-		ids.forEach((id, index) => {
-			this.content = this.content.replace(("@"+id), `<span style="border-radius: 5px; background: ${colors[index]}6c; color: ${colors[index]};">@${usernames[index]}</span>`)
+		var rolenames = msg.mentions.roles.map(role => role.name)
+		var m_colors = msg.mentions.members.map(member => (member.displayHexColor || 'ffffff'))
+		var r_colors = msg.mentions.roles.map(role => role.hexColor)
+		this.mentions.me = ((member_ids.includes(BLUBOT_ID)) || (member_ids.includes(BLUAXOLOTL_ID)))
+		member_ids.forEach((id, index) => {
+			this.content = this.content.replaceAll(("@"+id), `<span style="border-radius: 5px; background: ${m_colors[index]}6c; color: ${m_colors[index]};">@${usernames[index]}</span>`)
+		})
+		role_ids.forEach((id, index) => {
+			this.content = this.content.replaceAll(("&"+id), `<span style="border-radius: 5px; background: ${r_colors[index]}6c; color: ${r_colors[index]};">@${rolenames[index]}</span>`)
 		})
 
 		this.guild = {
@@ -578,24 +645,32 @@ client.on('ready', () => {
 	print(`v12 initialized... (${client.user.username})`)
 	function start_server() { // retry server initialization
 		if (no_connections) {
-			server.listen((port), () => {
-				console.log(`listening on *:${(port)}`);
-				setTimeout(function () {
-					if (no_connections) {
-						offset++
-						server.close(start_server)
-					}
-				}, 1000)
+			server.listen((port+offset), () => {
+				console.log(`listening on *:${(port+offset)}`)
+				// setTimeout(function () {
+				// 	if (no_connections) {
+				// 		offset++
+				// 		server.close(start_server)
+				// 	}
+				// }, 1000)
 			})	
 		}
 	}
 	start_server()
 })
-new_client.on('ready', () => {
-	print(`v13 initialized...`)
-	client.login(token)
+
+import('lowdb').then(module => {
+	var {LowSync, JSONFileSync} = module
+	adapter = new JSONFileSync("./config.json")
+	db = new LowSync(adapter)
+	db_read()
+
+	new_client.on('ready', () => {
+		print(`v13 initialized...`)
+		client.login(token)
+	})
+	new_client.login(token)
 })
-new_client.login(token)
 
 //// Server ////
 app.use('/', express.static('website'))
