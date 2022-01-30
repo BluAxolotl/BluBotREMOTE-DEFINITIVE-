@@ -23,7 +23,7 @@ const app = express()
 const server = require('http').createServer(app);
 const io = require('socket.io')(server);
 const datenow = new Date()
-var port = 8000
+var port = 4000
 var offset = 0
 var no_connections = true
 // JSON DATABASE //
