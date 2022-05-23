@@ -1,0 +1,38 @@
+{
+  "name": "blubotremote-definitive-",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BluAxolotl/BluBotREMOTE-DEFINITIVE-.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/BluAxolotl/BluBotREMOTE-DEFINITIVE-/issues"
+  },
+  "homepage": "https://github.com/BluAxolotl/BluBotREMOTE-DEFINITIVE-#readme",
+  "dependencies": {
+    "arraybuffer-to-string": "^1.0.2",
+    "base64-arraybuffer": "^1.0.2",
+    "bufferutil": "^4.0.6",
+    "chalk": "^5.0.0",
+    "date-and-time": "^2.1.0",
+    "discord-markdown": "^2.5.1",
+    "discord.js": "^12.5.3",
+    "discord.js-modern": "npm:discord.js@^13.2.0",
+    "dotenv": "^14.2.0",
+    "express": "^4.17.2",
+    "lowdb": "^3.0.0",
+    "mime-types": "^2.1.34",
+    "moment-timezone": "^0.5.34",
+    "socket.io": "^4.4.1",
+    "sync-request": "^6.1.0",
+    "unblocker": "^2.3.0",
+    "utf-8-validate": "^5.0.8"
+  }
+}
