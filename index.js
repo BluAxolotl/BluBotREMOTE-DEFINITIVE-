@@ -1,4 +1,4 @@
-// Console //
+ // Console //
 const print = console.log
 const print_warn = console.warn
 const print_debug = console.debug
@@ -9,15 +9,17 @@ const BLUAXOLOTL_ID = "229319768874680320"
 var CachedMessages = []
 const Discord = require('discord.js')
 const NewDiscord = require('discord.js-modern')
-const Intents = NewDiscord.Intents
+const Intents = NewDiscord.Intents///
 const new_client = new NewDiscord.Client({intents: Object.keys(Intents.FLAGS)})
 const client = new_client
 // const config = require('./config.json')
-const { parser, htmlOutput, toHTML } = require('discord-markdown')
+const { parser, htmlOutput, toHTML } = require('./discord-markdown.js')
 var prev_req_channel = null
 // Server //
 var Sockets = new Map()
 var BackChannels = new Map()
+var Unblocker = require('unblocker')
+var unblocker = new Unblocker({prefix: '/proxy/'})
 const express = require('express')
 const app = express()
 const server = require('http').createServer(app);
@@ -36,7 +38,7 @@ var BlockedChannels = null
 var Nicknames = null
 var Usernames = new Map()
 // Process Env //
-require('dotenv').config()
+require('dotenv').config({ path: `${__dirname}/.env` })
 const token = process.env["token"]
 // Misc. Modules //
 var request = require('sync-request')
@@ -124,6 +126,20 @@ async function con_command(socket, line) {
 				print("\n\n[ NO BACK CHANNEL ]\n\n")
 			}
 		break;
+		case 'nick':
+			var channel_id = Sockets.get(socket)
+			var channel = client.channels.fetch(channel_id).then(channel => {
+				channel.guild.members.fetch(client.user.id).then(ClientMember => {
+					let input = args.join(" ")
+					if (input == "RESET") {
+						ClientMember.setNickname('BluBot [ REMOTE ]').then(Member => { reload_channel(socket) })
+					} else {
+						ClientMember.setNickname(input).then(Member => { reload_channel(socket) })
+					}
+					reload_channel(socket)
+				})
+			})
+		break;
 		case "jump":
 			socket.emit('JUMP_MESSAGE')
 		break;
@@ -178,18 +194,19 @@ async function con_command(socket, line) {
 					text = `${Nicknames.get(member.user.id)} (${member.user.tag})`
 				}
 				text = (`[${member.user.id}] ` + text)
-				switch (member.presence.status) {
+				var clc = require("cli-color")
+				switch (member.presence != null ? member.presence.status : 'offline') {
 					case 'online':
-						print(text)
+						print(clc.green(text))
 					break
 					case 'dnd':
-						print(text)
+						print(clc.red(text))
 					break
 					case 'idle':
-						print(text)
+						print(clc.yellow(text))
 					break
 					case 'offline':
-						print(text)
+						print(clc.blackBright(text))
 					break
 				}
 			})
@@ -425,9 +442,11 @@ class SocketUser {
 
 class SocketGuild {
 	constructor(srv) {
+		let icon = srv.iconURL({format: 'png'})
 		this.id = srv.id
 		this.name = srv.name
 		this.nameAcronym = srv.nameAcronym
+		this.icon = (icon != null ? icon.replace("https://", "/proxy/https:/") : "/default.png")
 		var arr = srv.channels.cache.filter(chl => (chl.type == "GUILD_TEXT"))
 		arr = arr.map(chl => {
 			return {id: chl.id, name: chl.name, pos: chl.rawPosition, type: chl.type, threads: chl.threads.cache.map(thd => new SocketThread(thd)), perms: chl.permissionsFor(new_client.user.id)}
@@ -499,6 +518,7 @@ class SocketMessage {
 		})
 
 		this.content = toHTML(this.true_content)
+		
 		this.raw_content = msg.content
 
 		const searchRegExp = /\n/gi
@@ -558,19 +578,32 @@ class SocketMessage {
 
 		var real_embeds = msg.embeds.filter(emb => accepted_types.includes(emb.type))
 
-		this.embeds = real_embeds.map(emb => {
-			return {
-				url: emb.url,
-				hexColor: emb.hexColor,
-				author: (emb.author != null ? {name: emb.author.name, url: emb.author.url} : null),
-				title: emb.title,
-				desc: emb.description,
-				footer: (emb.footer != null ? {text: emb.footer.text, icon: emb.footer.iconURL} : null),
-				provider: (emb.provider != null ? {name: emb.provider.name, url: emb.provider.url} : null)
+		this.attachments = msg.attachments.map(make_ath)
+		
+		this.embeds = []
+		real_embeds.forEach(emb => {
+			var	mime_type = mime.lookup(emb.video ? emb.video.url.split("?")[0] : null)
+			if (emb.video == null || mime_type == false) {
+				this.embeds.push({
+					url: emb.url,
+					hexColor: emb.hexColor,
+					author: (emb.author != null ? {name: emb.author.name, url: emb.author.url} : null),
+					title: emb.title,
+					desc: emb.description,
+					footer: (emb.footer != null ? {text: emb.footer.text, icon: emb.footer.iconURL} : null),
+					provider: (emb.provider != null ? {name: emb.provider.name, url: emb.provider.url} : null)
+				})
+			} else {
+				this.attachments.push({
+					id: msg.id + `video`,
+					name: emb.video.url.split('/')[6],
+					url: emb.video.url,
+					type: mime_type.split("/")[0],
+					protocol: mime_type,
+					msg: { id: msg.id }
+				})
 			}
 		})
-
-		this.attachments = msg.attachments.map(make_ath)
 		
 		var bits = msg.content.split(' ')
 		var bit_count = 0
@@ -643,38 +676,28 @@ new_client.on('messageCreate', msg => {
 
 client.on('ready', () => {
 	print(`v12 initialized... (${client.user.username})`)
-	function start_server() { // retry server initialization
-		if (no_connections) {
-			server.listen((port+offset), () => {
-				console.log(`listening on *:${(port+offset)}`)
-				// setTimeout(function () {
-				// 	if (no_connections) {
-				// 		offset++
-				// 		server.close(start_server)
-				// 	}
-				// }, 1000)
-			})	
-		}
-	}
-	start_server()
 })
 
 import('lowdb').then(module => {
 	var {LowSync, JSONFileSync} = module
-	adapter = new JSONFileSync("./config.json")
+	adapter = new JSONFileSync(`${__dirname}/config.json`)
 	db = new LowSync(adapter)
 	db_read()
-
-	new_client.on('ready', () => {
-		print(`v13 initialized...`)
-		client.login(token)
-	})
-	new_client.login(token)
 })
 
 //// Server ////
-app.use('/', express.static('website'))
+app.use(unblocker)
+
+app.use('/', express.static(path.join(__dirname, 'website')))
 
 app.get('/', (req, res) => {
   res.sendFile('/index.html', {root: path.join(__dirname, 'website')});
-});
+})
+
+server.listen(8080, "0.0.0.0").on('upgrade', unblocker.onUpgrade)
+
+new_client.on('ready', () => {
+	print(`v13 initialized...`)
+	client.login(token)
+})
+new_client.login(token)

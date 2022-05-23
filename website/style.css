@@ -134,7 +134,8 @@ code {
 }
 
 #servers {
-	width: var(--margin_s);
+	direction: rtl;
+	width: 200px;
 	height: var(--main_height);
 	margin-top: var(--util_bar_height);
 }
@@ -176,30 +177,72 @@ code {
 	margin-left: 10px;
 	word-wrap: break-word;
 }
-	
+
+div[msg_menu="true"] > *:not(div[msg_button]) {
+	filter: blur(4px) brightness(50%);
+}
+
+.buttoncontainer {
+  justify-content: center;
+	position: absolute;
+	z-index: 100;
+	transform: translate(0, -50px);
+}
+																				 
+.messagebutton {
+	border: none;
+	border-radius: 50%;
+	width: 40px;
+	height: 40px;
+	background-color: #222c38;
+	transition-duration: 100ms;
+	transition-timing-function: ease-in-out;
+}
+
 .mentions {
 	background-image: linear-gradient(to left, #5ba8ff7c 2px, #5ba8ff2c 3px);
 }
 
 .guild {
-	max-width: 60px;
-	max-height: 60px;
-	background-color: #222c38;
+	direction: ltr;
+	filter: brightness(100%);
+	width: 60px;
+	height: 60px;
 	overflow-wrap: anywhere;
+	position: relative;
+	text-align: center;
+	margin-right: 130px;
 }
 
-.messagebutton {
+.guild > img {
+	transition: 200ms;
+	border-radius: 50%;
+	width: inherit;
+	height: inherit;
+}
+
+.guild:hover > img {
+	filter: brightness(30%);
+}
+
+.guild > .guild-label {
+	border-radius: 20px;
+	position: absolute;
+	width: 100px;
+	left: 65px;
+	top: 20px;
+	color: white;
+	transition-duration: 200ms;
+	transition-property: opacity;
 	opacity: 0;
 	display: none;
-	position: relative;
+	background: #222c38;
 	z-index: 100;
-	top: 0px;
-	left: 10px;
-	float: left;
-	border: none;
-	background-color: #222c38;
-	transition-duration: 100ms;
-	transition-timing-function: ease-in-out;
+}
+
+.guild:hover > .guild-label {
+	opacity: 1;
+	display: inherit;
 }
 
 .embed {

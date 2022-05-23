@@ -50,16 +50,20 @@ socket.on('test', data => {
 class GuildElement {
 	constructor(gld) {
 		var base = document.createElement('div')
-		var text = document.createElement('p')
+		var icon = document.createElement('img')
+		var label = document.createElement('div')
 		base.classList.add('guild')
-		text.textContent = gld.nameAcronym
+		icon.src = gld.icon
+		label.classList.add('guild-label')
+		label.textContent = gld.name
 		var default_channel = gld.channels[0].id
 		var temp = window.sessionStorage.getItem(gld.id)
 		if (temp) {default_channel = window.sessionStorage.getItem(gld.id)}
 		base.onclick = function(e) {
 			socket.emit('REQUEST_CHANNEL', default_channel)
 		}
-		base.appendChild(text)
+		base.appendChild(icon)
+		base.appendChild(label)
 		guilds_element.appendChild(base)
 	}
 }
@@ -164,7 +168,15 @@ class MessageElement {
 					open_attachment_button.id = ath.id
 					open_attachment_button.textContent = ath.name
 					open_attachment_button.onclick = function (e) {
-						socket.emit("REQUEST_ATTATCHMENT", ath)
+						// socket.emit("REQUEST_ATTATCHMENT", ath)
+						var type = (ath.type == "image" ? "img" : ath.type)
+						var ath_element = document.createElement(`${type}`)
+						var oa_button = document.getElementById(ath.id)
+						ath_element.classList.add('ath')
+						oa_button.parentNode.replaceChild(ath_element, oa_button)
+						ath_element.id = `attach-${ath.id}`
+						if (ath.type = ("audio" || "video")) { ath_element.controls = true }
+						ath_element.src = ath.url.replace("https://", "/proxy/https:/")
 					}
 					p.append(document.createElement('br'))
 					p.appendChild(open_attachment_button)
@@ -191,10 +203,9 @@ class MessageElement {
 			if (msg.gifs) {
 				msg.gifs.forEach(i => {
 					var gif_element = document.createElement('video')
-					gif_element.src = i
+					gif_element.src = i.replace("https://", "/proxy/https:/")
 					gif_element.controls = false
 			gif_element.loop = true
-					print(i)
 					gif_element.classList.add('ath')
 					gif_element.setAttribute('blur', 'true')
 					gif_element.setAttribute('style', 'filter: blur(10px);')
@@ -280,6 +291,7 @@ class MessageElement {
 			}
 		})
 		// CREATING BUTTON ELEMENTS
+		var button_container = document.createElement('div')
 		var info_button = document.createElement('button')
 		var reply_button = document.createElement('button')
 		var edit_button = document.createElement('button')
@@ -320,14 +332,14 @@ class MessageElement {
 			var hovered = false
 			if (p.hasAttribute("hovered")) { hovered = Boolean(p.getAttribute("hovered")) }
 			if (hovered && e.which == 16) {
-				p.style = "background: #000000;"
-				buttons.forEach(curr_button => { curr_button.setAttribute('style', 'opacity: 1; display: inline;') })
+				p.setAttribute('msg_menu', "true")
+				button_container.style = ''
 			}
 		})
 		window.addEventListener('keyup', function (e) {
 			if (e.which == 16) {
-				p.style = ""
-				buttons.forEach(curr_button => { curr_button.setAttribute('style', 'opacity: 0; display: none;') })
+				p.setAttribute('msg_menu', "")
+				button_container.style = 'display: none'
 			}
 		})
 		p.addEventListener('mouseenter', function (e) {
@@ -335,18 +347,22 @@ class MessageElement {
 		})
 		p.addEventListener('mouseleave', function (e) {
 			p.setAttribute('hovered', "")
-			p.style = ""
-			buttons.forEach(curr_button => { curr_button.setAttribute('style', 'opacity: 0; display: none;') })
+			p.setAttribute('msg_menu', "")
+			button_container.style = 'display: none'
 		})
 		// GET SCROLL POSITION
 		var a = messages_element.scrollTop;
 		var b = messages_element.scrollHeight - messages_element.clientHeight;
 		var c = (a / b)*100;
 		// APPEND BUTTONS
-		p.appendChild(info_button)
-		p.appendChild(reply_button)
-		if (this_client) { p.appendChild(edit_button) }
-		p.appendChild(delete_button)
+		button_container.setAttribute('msg_button', "")
+		button_container.style = 'display: none'
+		button_container.classList.add('buttoncontainer')
+		button_container.appendChild(info_button)
+		button_container.appendChild(reply_button)
+		if (this_client) { button_container.appendChild(edit_button) }
+		if (this_client) { button_container.appendChild(delete_button) }
+		p.appendChild(button_container)
 
 		// APPEND MESSAGE ELEMENT + SCROLLING
 		if (!msg.blocked && append) { messages_element.appendChild(p); twemoji.parse(messages_element) } else { this.p = p }
@@ -515,8 +531,10 @@ socket.on('OPEN_ATTACHMENT', (ath, data, count) => {
 socket.on('REPLY_LOAD', (own_msg, msg) => {
 	let current = messages_element.scrollTop
 	var msg_elem = document.getElementById(own_msg.id)
-	messages_element.replaceChild(new MessageElement(own_msg, false, true, {reply: msg}).p, msg_elem)
-	messages_element.scrollTop = current
+	if (msg_elem != null) {
+		messages_element.replaceChild(new MessageElement(own_msg, false, true, {reply: msg}).p, msg_elem)
+		messages_element.scrollTop = current
+	}
 })
 
 function jump_msg(_unused) {
@@ -541,7 +559,6 @@ socket.on('NEW_MESSAGE', (msg) => {
 			exec_ping()
 		}
 		if (document.visibilityState == "hidden") {
-			print('lawl')
 			notify = new Notification(`Mentioned in [${msg.guild.name}:${msg.channel.name}] !`)
 			notify.onclick = jump_msg
 		}
