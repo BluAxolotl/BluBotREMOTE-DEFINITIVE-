@@ -212,7 +212,7 @@ const rulesDiscord = {
 		html: function(node, output, state) {
 			return htmlTag('img', '', {
 				class: `d-emoji${node.animated ? ' d-emoji-animated' : ''}`,
-				src: `http://localhost:8080/proxy/https:/cdn.discordapp.com/emojis/${node.id}.${node.animated ? 'gif' : 'png'}`,
+				src: `/proxy/https:/cdn.discordapp.com/emojis/${node.id}.${node.animated ? 'gif' : 'png'}`,
 				alt: `:${node.name}:`
 			}, false, state);
 		}
