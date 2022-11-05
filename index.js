@@ -700,4 +700,5 @@ new_client.on('ready', () => {
 	print(`v13 initialized...`)
 	client.login(token)
 })
+
 new_client.login(token)
